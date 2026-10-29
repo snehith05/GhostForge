@@ -24,8 +24,8 @@ class SpecGateTest {
         val spec = result.spec
         assertEquals("water-request-tracker", spec.appId)
         assertEquals(1, spec.datasets.size)
-        assertEquals(4, spec.datasets[0].fields.size)
-        assertEquals(3, spec.components.size)
+        assertEquals(6, spec.datasets[0].fields.size)
+        assertEquals(6, spec.components.size)
     }
 
     @Test

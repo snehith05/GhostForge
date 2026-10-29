@@ -17,12 +17,15 @@ seconds. Anything needing an Android API belongs in the app module, not here.
 ## Build and test
 
 ```
-bash tools/t.sh          # ALWAYS use this, never raw ./gradlew test
+bash tools/t.sh          # core module -- ALWAYS use this, never raw ./gradlew test
+./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin  # app module, fast compile check
+./gradlew :app:connectedDebugAndroidTest   # needs a running emulator/device -- see gotcha below
 ```
 
 `tools/t.sh` prints only failing tests plus a one-line summary. A build or
 compile failure is printed in full, because a swallowed compile error is
-invisible. Raw Gradle test output is too verbose for an agent transcript.
+invisible. Raw Gradle test output is too verbose for an agent transcript. The
+app module has no equivalent filtered runner yet.
 
 ### Machine gotcha: AVG breaks all artifact downloads
 
@@ -39,6 +42,37 @@ would break other platforms. **Do not set `org.gradle.jvmargs` in the project's
 `gradle.properties`** -- a project value shadows the user one and the truststore
 flag is lost. If downloads start failing with PKIX again, check that first.
 `curl` works regardless, so curl succeeding proves nothing about Java.
+
+`org.gradle.jvmargs` only reaches the Gradle **daemon** JVM. The wrapper
+script's own bootstrap JVM -- which downloads a new `distributionUrl` the
+first time one is set -- launches before that property is ever read, and
+hits the same PKIX failure. Bumping the wrapper version needs the fix passed
+a second way:
+
+```
+JAVA_OPTS="-Djavax.net.ssl.trustStoreType=Windows-ROOT" ./gradlew ...
+```
+
+### Machine gotcha: connectedAndroidTest misreports failure
+
+`:app:connectedDebugAndroidTest` reports `FAILED` / "Failed to receive the
+UTP test results" on this machine **even when every test passed**. Confirmed
+by reading the result straight from the runner's own log instead of trusting
+Gradle's exit code:
+
+```
+app/build/outputs/androidTest-results/connected/debug/*/utp.0.log
+# look for: Execute <class>.<method>: PASSED / FAILED
+```
+
+Cause: a `grpc UNAVAILABLE` on UTP's result-reporting channel, which
+negotiates TLS even though it is a localhost loopback connection -- the same
+AVG interception as above, on a channel `JAVA_TOOL_OPTIONS` did not fix
+either (the Gradle daemon that runs the task is long-lived, so an env var set
+on a later invocation arrives too late to matter). Unresolved; read the log,
+don't trust the task's exit code. The emulator itself needs
+`-gpu swiftshader_indirect -no-window` -- the default host-GPU backend
+crashed mid-test on this machine's Iris Xe + gfxstream combination.
 
 ## Invariants
 
@@ -77,13 +111,26 @@ change.
 ## Layout
 
 ```
-core/src/main/kotlin/dev/ghostforge/core/spec/
-  Limits.kt         every bound, one auditable place
-  AppSpec.kt        the spec model; Field/Component are sealed
-  Validation.kt     ErrorCode, ValidationError, ValidationReport, Admission
-  SpecValidator.kt  semantic rules
-  SpecGate.kt       the admission entry point
-tools/t.sh          filtered test runner
+core/src/main/kotlin/dev/ghostforge/core/
+  spec/
+    Limits.kt         every bound, one auditable place
+    AppSpec.kt        the spec model; Field/Component are sealed
+    Validation.kt     ErrorCode, ValidationError, ValidationReport, Admission
+    SpecValidator.kt  semantic rules
+    SpecGate.kt       the admission entry point
+  runtime/
+    RenderGate.kt     re-checks a *value* against an already-admitted field at
+                      render/write time -- data can go stale, the spec can't.
+                      RawValue, FieldRender, RecordRow, bucketByEnum.
+app/src/main/kotlin/dev/ghostforge/app/
+  MainActivity.kt     admits the sample spec, hosts the tab UI
+  data/RecordStore.kt one real SQLite table per dataset, raw SupportSQLiteDatabase
+                      -- schema is only known at runtime, Room can't generate it
+  data/db/            change_log: the one Room entity/DAO; hand-rolled event
+                      log, not a CRDT library -- the owner's call, see PROGRESS.md
+  ui/                 one composable per component type + the dispatcher
+app/src/androidTest/  PersistenceSurvivesProcessDeathTest
+tools/t.sh          filtered test runner (core only)
 tools/testsum.py    JUnit XML -> failures only
 docs/               decision records
 ```
@@ -97,8 +144,8 @@ compiler will point at what is missing.
 ## Milestones
 
 M1 spec schema + validator + test runner      DONE
-M2 Compose runtime + Room persistence         next
-M3 deterministic generation + repair loop
+M2 Compose runtime + Room persistence         DONE
+M3 deterministic generation + repair loop     next
 M4 identity, signing, manifest, revocation
 M5 sync engine (event log, merge, convergence)
 M6 GHOSTNET / Nearby Connections
@@ -121,8 +168,9 @@ See `PROGRESS.md` for current state.
   Credential Manager, so pushing needs no prompt. Commit and push before the
   session ends.
 - Keep this file under 200 lines.
-- End commit messages with:
-  `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
+- End commit messages with whichever model authored that milestone, per
+  "Model per milestone" above:
+  `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
 
 ## Not in scope for the MVP
 

@@ -226,28 +226,35 @@ object SpecValidator {
             val fieldsById = ds.fields.associateBy { it.id }
             when (c) {
                 is RecordForm -> Unit
-                is RecordList -> validateRecordList(c, path, fieldsById, e)
-                is StatusCounter -> validateStatusCounter(c, path, fieldsById, e)
+                is RecordList -> validateColumns(c.columns, "$path.columns", c.dataset, fieldsById, e)
+                is StatusCounter -> requireEnumField(c.groupBy, "$path.group_by", c.dataset, fieldsById, e)
+                is Checklist -> validateChecklist(c, path, fieldsById, e)
+                is StatusBoard -> {
+                    requireEnumField(c.groupBy, "$path.group_by", c.dataset, fieldsById, e)
+                    validateColumns(c.columns, "$path.columns", c.dataset, fieldsById, e)
+                }
+                is AssignmentBoard -> {
+                    requireEnumField(c.assignedTo, "$path.assigned_to", c.dataset, fieldsById, e)
+                    validateColumns(c.columns, "$path.columns", c.dataset, fieldsById, e)
+                }
             }
         }
     }
 
-    private fun validateRecordList(
-        c: RecordList,
+    private fun validateColumns(
+        columns: List<String>,
         path: String,
+        dataset: String,
         fieldsById: Map<String, Field>,
         e: ErrorCollector,
     ) {
         val seen = mutableSetOf<String>()
-        c.columns.forEachIndexed { k, col ->
+        columns.forEachIndexed { k, col ->
             if (col !in fieldsById) {
-                e.add(
-                    ErrorCode.UNRESOLVED_REFERENCE, "$path.columns[$k]",
-                    "dataset '${c.dataset}' has no field '$col'",
-                )
+                e.add(ErrorCode.UNRESOLVED_REFERENCE, "$path[$k]", "dataset '$dataset' has no field '$col'")
             }
             if (!seen.add(col)) {
-                e.add(ErrorCode.DUPLICATE_ID, "$path.columns[$k]", "duplicate column '$col'")
+                e.add(ErrorCode.DUPLICATE_ID, "$path[$k]", "duplicate column '$col'")
             }
         }
     }
@@ -256,25 +263,46 @@ object SpecValidator {
      * Grouping is restricted to enum fields. An enum has a bounded option set,
      * so the number of groups is known from the spec alone; grouping by text or
      * number would let record content dictate unbounded work at render time.
+     * Shared by [StatusCounter], [StatusBoard] and [AssignmentBoard].
      */
-    private fun validateStatusCounter(
-        c: StatusCounter,
+    private fun requireEnumField(
+        fieldId: String,
+        path: String,
+        dataset: String,
+        fieldsById: Map<String, Field>,
+        e: ErrorCollector,
+    ) {
+        val target = fieldsById[fieldId]
+        if (target == null) {
+            e.add(ErrorCode.UNRESOLVED_REFERENCE, path, "dataset '$dataset' has no field '$fieldId'")
+        } else if (target !is EnumField) {
+            e.add(ErrorCode.TYPE_MISMATCH, path, "must name an enum field; '$fieldId' is ${target::class.simpleName}")
+        }
+    }
+
+    /** A checklist item needs a label and a two-state completion flag. */
+    private fun validateChecklist(
+        c: Checklist,
         path: String,
         fieldsById: Map<String, Field>,
         e: ErrorCollector,
     ) {
-        val target = fieldsById[c.groupBy]
-        if (target == null) {
+        if (c.titleField !in fieldsById) {
             e.add(
-                ErrorCode.UNRESOLVED_REFERENCE, "$path.group_by",
-                "dataset '${c.dataset}' has no field '${c.groupBy}'",
+                ErrorCode.UNRESOLVED_REFERENCE, "$path.title_field",
+                "dataset '${c.dataset}' has no field '${c.titleField}'",
             )
-            return
         }
-        if (target !is EnumField) {
+        val done = fieldsById[c.doneField]
+        if (done == null) {
             e.add(
-                ErrorCode.TYPE_MISMATCH, "$path.group_by",
-                "group_by must name an enum field; '${c.groupBy}' is ${target::class.simpleName}",
+                ErrorCode.UNRESOLVED_REFERENCE, "$path.done_field",
+                "dataset '${c.dataset}' has no field '${c.doneField}'",
+            )
+        } else if (done !is BooleanField) {
+            e.add(
+                ErrorCode.TYPE_MISMATCH, "$path.done_field",
+                "done_field must name a boolean field; '${c.doneField}' is ${done::class.simpleName}",
             )
         }
     }

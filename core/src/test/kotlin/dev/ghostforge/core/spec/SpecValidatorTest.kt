@@ -98,6 +98,52 @@ class SpecValidatorTest {
         assertContains(codesFor(doc), ErrorCode.UNRESOLVED_REFERENCE)
     }
 
+    // --- checklist -----------------------------------------------------------
+
+    @Test
+    fun `checklist done_field that is not boolean is rejected`() {
+        val doc = Fixtures.variant("\"done_field\": \"confirmed\"", "\"done_field\": \"household\"")
+        assertContains(codesFor(doc), ErrorCode.TYPE_MISMATCH)
+    }
+
+    @Test
+    fun `checklist title_field that does not exist is rejected`() {
+        val doc = Fixtures.variant("\"title_field\": \"household\"", "\"title_field\": \"absent\"")
+        assertContains(codesFor(doc), ErrorCode.UNRESOLVED_REFERENCE)
+    }
+
+    // --- status board --------------------------------------------------------
+
+    @Test
+    fun `status board grouping by a non-enum field is rejected`() {
+        val spec = AppSpec(
+            schemaVersion = "1.0", appId = "a-b-c", name = "n",
+            datasets = listOf(Dataset("d", listOf(TextField("f", "F")))),
+            components = listOf(StatusBoard(dataset = "d", groupBy = "f")),
+        )
+        assertContains(SpecValidator.validate(spec).codes(), ErrorCode.TYPE_MISMATCH)
+    }
+
+    @Test
+    fun `status board column that is not a field is rejected`() {
+        val doc = Fixtures.variant("\"columns\": [\"household\", \"quantity\"]", "\"columns\": [\"nope\"]")
+        assertContains(codesFor(doc), ErrorCode.UNRESOLVED_REFERENCE)
+    }
+
+    // --- assignment board ------------------------------------------------------
+
+    @Test
+    fun `assignment board grouping by a non-enum field is rejected`() {
+        val doc = Fixtures.variant("\"assigned_to\": \"assigned_to\"", "\"assigned_to\": \"household\"")
+        assertContains(codesFor(doc), ErrorCode.TYPE_MISMATCH)
+    }
+
+    @Test
+    fun `assignment board referencing a missing field is rejected`() {
+        val doc = Fixtures.variant("\"assigned_to\": \"assigned_to\"", "\"assigned_to\": \"absent\"")
+        assertContains(codesFor(doc), ErrorCode.UNRESOLVED_REFERENCE)
+    }
+
     // --- defaults ----------------------------------------------------------
 
     @Test

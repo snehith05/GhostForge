@@ -50,6 +50,20 @@ object Fixtures {
               "id": "updated_at",
               "label": "Last updated",
               "merge": "max"
+            },
+            {
+              "type": "enum",
+              "id": "assigned_to",
+              "label": "Assigned to",
+              "options": ["unassigned", "volunteer_a", "volunteer_b"],
+              "default": "unassigned",
+              "merge": "last_write_wins"
+            },
+            {
+              "type": "boolean",
+              "id": "confirmed",
+              "label": "Delivery confirmed",
+              "merge": "last_write_wins"
             }
           ]
         }
@@ -65,6 +79,24 @@ object Fixtures {
           "type": "status_counter",
           "dataset": "water_requests",
           "group_by": "status"
+        },
+        {
+          "type": "checklist",
+          "dataset": "water_requests",
+          "title_field": "household",
+          "done_field": "confirmed"
+        },
+        {
+          "type": "status_board",
+          "dataset": "water_requests",
+          "group_by": "status",
+          "columns": ["household", "quantity"]
+        },
+        {
+          "type": "assignment_board",
+          "dataset": "water_requests",
+          "assigned_to": "assigned_to",
+          "columns": ["household", "status"]
         }
       ],
       "permissions": {

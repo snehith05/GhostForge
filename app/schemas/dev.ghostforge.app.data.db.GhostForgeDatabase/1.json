@@ -1,0 +1,106 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "4d14dc329c1d8d68a03ee63679f0ea23",
+    "entities": [
+      {
+        "tableName": "change_log",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` TEXT NOT NULL, `originDeviceId` TEXT NOT NULL, `datasetId` TEXT NOT NULL, `recordId` TEXT NOT NULL, `fieldId` TEXT NOT NULL, `mergePolicy` TEXT NOT NULL, `wallClockMillis` INTEGER NOT NULL, `recordedAt` INTEGER NOT NULL, `text` TEXT, `number` REAL, `flag` INTEGER, `moment` INTEGER, PRIMARY KEY(`eventId`))",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originDeviceId",
+            "columnName": "originDeviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetId",
+            "columnName": "datasetId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fieldId",
+            "columnName": "fieldId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mergePolicy",
+            "columnName": "mergePolicy",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wallClockMillis",
+            "columnName": "wallClockMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordedAt",
+            "columnName": "recordedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value.text",
+            "columnName": "text",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "value.number",
+            "columnName": "number",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "value.flag",
+            "columnName": "flag",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "value.moment",
+            "columnName": "moment",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_change_log_datasetId_recordId_fieldId",
+            "unique": false,
+            "columnNames": [
+              "datasetId",
+              "recordId",
+              "fieldId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_change_log_datasetId_recordId_fieldId` ON `${TABLE_NAME}` (`datasetId`, `recordId`, `fieldId`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4d14dc329c1d8d68a03ee63679f0ea23')"
+    ]
+  }
+}

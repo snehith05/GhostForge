@@ -125,8 +125,9 @@ data class TimestampField(
 ) : Field()
 
 // ---------------------------------------------------------------------------
-// Components. Milestone 1 ships the three that prove the format end to end;
-// checklist, status board and assignment board arrive with the runtime in M2.
+// Components. Milestone 1 shipped the three that prove the format end to
+// end; checklist, status board and assignment board arrive with the runtime
+// in milestone 2.
 // ---------------------------------------------------------------------------
 
 @Serializable
@@ -155,6 +156,36 @@ data class StatusCounter(
     override val dataset: String,
     /** Must name an enum field: grouping by unbounded text is a cost attack. */
     @SerialName("group_by") val groupBy: String,
+) : Component()
+
+@Serializable
+@SerialName("checklist")
+data class Checklist(
+    override val dataset: String,
+    /** Any field, shown as the item's label. */
+    @SerialName("title_field") val titleField: String,
+    /** Must name a boolean field: a checkbox has exactly two states. */
+    @SerialName("done_field") val doneField: String,
+) : Component()
+
+@Serializable
+@SerialName("status_board")
+data class StatusBoard(
+    override val dataset: String,
+    /** Must name an enum field; same bound as [StatusCounter.groupBy]. */
+    @SerialName("group_by") val groupBy: String,
+    /** Field ids shown on each card. Empty means every field in the dataset. */
+    val columns: List<String> = emptyList(),
+) : Component()
+
+@Serializable
+@SerialName("assignment_board")
+data class AssignmentBoard(
+    override val dataset: String,
+    /** Must name an enum field; its declared options are the fixed roster of assignees. */
+    @SerialName("assigned_to") val assignedTo: String,
+    /** Field ids shown on each card. Empty means every field in the dataset. */
+    val columns: List<String> = emptyList(),
 ) : Component()
 
 // ---------------------------------------------------------------------------
