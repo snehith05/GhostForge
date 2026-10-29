@@ -1,0 +1,16 @@
+# Gradle / build output -- never sync these (OneDrive file locks break builds)
+.gradle/
+build/
+**/build/
+local.properties
+*.log
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# Keys must never be committed (milestone 4)
+*.key
+*.pem
+secrets/
