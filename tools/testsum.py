@@ -21,6 +21,11 @@ OWN_FRAME = "dev.ghostforge"
 
 
 def main() -> int:
+    # A piped stdout on Windows defaults to the ANSI code page, which cannot encode
+    # Kannada or emoji (and nothing can encode a lone surrogate). Without this, the
+    # first such failure message crashes the script and every failure after it --
+    # and the summary -- silently disappears.
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     results_dir, gradle_exit, gradle_log = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 
     files = sorted(glob.glob(os.path.join(results_dir, "TEST-*.xml")))

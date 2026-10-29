@@ -43,36 +43,18 @@ would break other platforms. **Do not set `org.gradle.jvmargs` in the project's
 flag is lost. If downloads start failing with PKIX again, check that first.
 `curl` works regardless, so curl succeeding proves nothing about Java.
 
-`org.gradle.jvmargs` only reaches the Gradle **daemon** JVM. The wrapper
-script's own bootstrap JVM -- which downloads a new `distributionUrl` the
-first time one is set -- launches before that property is ever read, and
-hits the same PKIX failure. Bumping the wrapper version needs the fix passed
-a second way:
-
-```
-JAVA_OPTS="-Djavax.net.ssl.trustStoreType=Windows-ROOT" ./gradlew ...
-```
+`org.gradle.jvmargs` reaches only the Gradle **daemon**. The wrapper's own
+bootstrap JVM downloads a new `distributionUrl` before that is read, so a
+wrapper bump needs `JAVA_OPTS="-Djavax.net.ssl.trustStoreType=Windows-ROOT" ./gradlew ...`.
 
 ### Machine gotcha: connectedAndroidTest misreports failure
 
-`:app:connectedDebugAndroidTest` reports `FAILED` / "Failed to receive the
-UTP test results" on this machine **even when every test passed**. Confirmed
-by reading the result straight from the runner's own log instead of trusting
-Gradle's exit code:
-
-```
-app/build/outputs/androidTest-results/connected/debug/*/utp.0.log
-# look for: Execute <class>.<method>: PASSED / FAILED
-```
-
-Cause: a `grpc UNAVAILABLE` on UTP's result-reporting channel, which
-negotiates TLS even though it is a localhost loopback connection -- the same
-AVG interception as above, on a channel `JAVA_TOOL_OPTIONS` did not fix
-either (the Gradle daemon that runs the task is long-lived, so an env var set
-on a later invocation arrives too late to matter). Unresolved; read the log,
-don't trust the task's exit code. The emulator itself needs
-`-gpu swiftshader_indirect -no-window` -- the default host-GPU backend
-crashed mid-test on this machine's Iris Xe + gfxstream combination.
+`:app:connectedDebugAndroidTest` says `FAILED` ("Failed to receive the UTP
+test results") even when every test passed: UTP's result channel negotiates
+TLS over localhost and AVG breaks it (`JAVA_TOOL_OPTIONS` did not help).
+Unresolved -- read `app/build/outputs/androidTest-results/connected/debug/*/utp.0.log`
+for `Execute <test>: PASSED`, not the exit code. Run the emulator with
+`-gpu swiftshader_indirect -no-window`; the host-GPU backend crashes here.
 
 ## Invariants
 
@@ -107,6 +89,15 @@ change.
    text.
 10. **Validation collects all errors** in one pass, so the repair loop can fix a
     whole document per round trip instead of one error at a time.
+11. **Repair is generation-time only.** `SpecRepair` is `internal` to `core`,
+    so no receive path can reach it. A peer's document is admitted or rejected
+    exactly as written; repairing it would run what nobody wrote and void any
+    signature over it (M4).
+12. **Repair never invents.** It shortens, slugs, dedupes, drops, or resets to
+    a documented default -- never adds a dataset, field or option, never changes
+    a field's type, never touches `schema_version`. Templates decide meaning and
+    are valid by construction except the user's own name and description; any
+    other repair on template output is a template bug, and the tests fail on it.
 
 ## Layout
 
@@ -122,6 +113,12 @@ core/src/main/kotlin/dev/ghostforge/core/
     RenderGate.kt     re-checks a *value* against an already-admitted field at
                       render/write time -- data can go stale, the spec can't.
                       RawValue, FieldRender, RecordRow, bucketByEnum.
+  gen/                description -> admitted spec, no model; deterministic to the byte
+    SpecGenerator.kt  the public entry point
+    Interpreter.kt    weighted-keyword template choice, name, explicit lists
+    Templates.kt      the catalog, valid by construction
+    SpecRepair.kt     ErrorCode-dispatched repair loop (invariants 11, 12)
+    Idents.kt         every text -> identifier transform, shared by both
 app/src/main/kotlin/dev/ghostforge/app/
   MainActivity.kt     admits the sample spec, hosts the tab UI
   data/RecordStore.kt one real SQLite table per dataset, raw SupportSQLiteDatabase
@@ -145,8 +142,8 @@ compiler will point at what is missing.
 
 M1 spec schema + validator + test runner      DONE
 M2 Compose runtime + Room persistence         DONE
-M3 deterministic generation + repair loop     next
-M4 identity, signing, manifest, revocation
+M3 deterministic generation + repair loop     DONE
+M4 identity, signing, manifest, revocation    next
 M5 sync engine (event log, merge, convergence)
 M6 GHOSTNET / Nearby Connections
 
@@ -170,7 +167,7 @@ See `PROGRESS.md` for current state.
 - Keep this file under 200 lines.
 - End commit messages with whichever model authored that milestone, per
   "Model per milestone" above:
-  `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 
 ## Not in scope for the MVP
 

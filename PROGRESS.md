@@ -2,93 +2,86 @@
 
 Updated 2026-10-29.
 
-## Current state: M2 complete
+## Current state: M3 complete
 
-Core: `bash tools/t.sh` -> **62 tests: 62 passed, 0 failed, 0 skipped**
-App: instrumented tests pass on-device, confirmed three times by reading the
-runner's own log -- see the `connectedAndroidTest` gotcha in `CLAUDE.md` for
-why the Gradle task's own exit code can't be trusted for that on this machine.
+Core: `bash tools/t.sh` -> **157 tests: 157 passed, 0 failed, 0 skipped**
+App: unchanged since M2 and compiles against the new core. Its instrumented
+tests are as M2 left them (see the `connectedAndroidTest` gotcha in `CLAUDE.md`).
 
 ### Done
 
-- Three new component types -- `checklist`, `status_board`, `assignment_board`
-  -- with their own `SpecValidator` branches, reusing `requireEnumField`/
-  `validateColumns` helpers shared with `status_counter`/`record_list`.
-- `core/runtime/RenderGate.kt`: re-validates a stored *value* against an
-  already-admitted field, at both render and write time. `Admission.Admitted`
-  only ever proved the spec was consistent; this is what makes "fail safe on
-  bad data" true of data written after admission too, including by a value
-  that predates a later field-bound change.
-- `bucketByEnum`: shared lane-grouping for `status_counter`, `status_board`
-  and `assignment_board` -- a declared-but-empty lane for every option, plus
-  an explicit unsafe lane rather than silently dropping bad values.
-- Android `app` module: Compose screens for all six component types, a
-  `RecordStore` that creates one real SQLite table per dataset (not an
-  entity/attribute/value table -- `Limits.kt` already anticipated this in
-  M1), and a Room `change_log` table, one database file per installed app.
-- Every write, not just every read, goes through `RenderGate` first
-  (`AppRuntimeViewModel`) -- bad data is rejected before it reaches storage.
-- Instrumented test for process-death survival: closes and reopens a
-  `GhostForgeDatabase` against the same file, confirms both the record and
-  its change-log event are still there; a second test confirms a re-delivered
-  `eventId` is ignored, not duplicated.
-- Gradle now carries the Android/Compose/KSP/Room toolchain: wrapper bumped
-  to 8.13 (AGP 8.11.1's minimum), `android.useAndroidX=true`, Compose BOM
-  pinned to 2024.04.01 (newer BOMs on this machine require compileSdk 37 /
-  AGP 9.1, neither installed; see `CLAUDE.md` for the version-pin reasoning).
+- `core/gen`: `SpecGenerator.generate(description)` turns plain language into
+  an admitted spec with no language model anywhere on the path. The
+  interpreter picks one of seven templates by weighted keywords and keeps the
+  matched words, so the choice is explainable. Lists the user spells out
+  ("statuses: pending, done", "volunteers: Asha, Ravi") become enum options.
+  The template builds a typed candidate, `SpecRepair` brings it into
+  compliance, and `SpecGate.admit` has the final word (invariant 1).
+- Template catalog: request tracker, incident log, inventory, volunteer
+  roster, checklist, and registry, plus a plain-records fallback for anything
+  unrecognised (non-English text included). A field or board appears only when
+  the user listed what it needs. People are never invented, except the
+  roster's placeholder teams, since a roster without people is meaningless.
+- `SpecRepair` fixes every validator `(code, path)` that has a mechanical fix,
+  and gives up on `MALFORMED`, a foreign `schema_version`, and anything that
+  would mean inventing a dataset, field or option (invariants 11 and 12). A
+  renamed id carries its references with it. Removals and trims are applied
+  against the report's original indices, so a round with several errors fixes
+  the right elements.
+- Determinism: no randomness, clock or locale on the path. Case mapping uses
+  the invariant locale, and hex is built by hand instead of with
+  `String.format`. Truncation never splits a surrogate pair, and lone
+  surrogates in the input are dropped, so every document survives UTF-8
+  encoding and can travel between devices.
+- `tools/testsum.py` fix: on this machine, Python's piped stdout is cp1252, so
+  the first failure message containing Kannada or an emoji crashed the script.
+  Every later failure and the summary line silently vanished (the exit code was
+  still non-zero). The script now always writes UTF-8 with backslash escapes.
 
 ### Verified, not just written
 
-Two `SpecValidator` rules and one `RenderGate` rule were mutation-tested the
-same way M1's were: disabling the check made exactly the expected test fail,
-nothing else. The instrumented tests ran against a real booted emulator three
-times, after fixing an actual mid-test crash by switching the emulator to
-`-gpu swiftshader_indirect -no-window` (the default host-GPU backend died on
-this machine's Iris Xe + gfxstream combination).
+The 95 new tests include a 500-case seeded fuzz. For any input, generation
+yields an admitted app, the only repairs are to the user's own name and
+description, and the document survives a UTF-8 round trip.
 
-A full second-pass review (separate from writing the code) caught one real
-bug and one real gap, both fixed before this milestone was called done:
+Seven load-bearing rules were mutation-tested, and each break was caught by
+exactly the tests meant to catch it. The rules: rename propagation, the
+surrogate guard, removal order, reserving correctly spelled ids, never
+touching `schema_version`, dropping lone surrogates, and template validity.
+The testsum.py bug surfaced because two of those runs printed truncated output.
 
-- `RenderGate` treated a stored empty string on a *required* text field as
-  fine, because the required check only looked for `RawValue.Null`. The
-  sample spec's required `household` field has no default, so submitting the
-  form empty would have created a record with no household name. Fixed:
-  `checkText` now treats an empty string as missing when `required`, matching
-  `SpecValidator`'s own `spec.name.isEmpty()` convention.
-- `MainActivity` never wired `onResult`, so a rejected write (correctly kept
-  out of storage) produced zero feedback -- "Add" would silently do nothing.
-  Fixed with a `Snackbar` showing the rejection reason.
+## Next
 
-Two lower-severity latent races were fixed alongside them: a write could
-structurally race `init`'s table setup (now gated on a `CompletableDeferred`,
-not just "fast enough in practice"), and `_records` updated via a
-read-modify-write that two concurrent dataset refreshes could clobber (now
-`MutableStateFlow.update {}`). Both were unreachable through today's
-single-dataset sample app, but cheap to close properly rather than leave as
-known debt.
-
-## Next: M3 -- deterministic generation + repair loop
-
-Per the working agreement this is architecture -- switch to **Opus**.
+1. **Sonnet: the "describe your app" screen.** This is UI, not architecture.
+   The app gets a text field and a Generate button. It shows what was
+   understood ("a request tracker, because of: request, deliver") and any
+   repairs, then opens the result in the M2 runtime. This replaces
+   `SampleSpecs` as the way in. Enum option ids should display nicely
+   (`in_progress` -> "In progress", with a leading `opt_` removed).
+2. **Opus: M4, identity, signing, manifest and revocation.** Signing needs a
+   canonical byte form. `SpecGate.encode` is deterministic but not canonical.
 
 ## Carry forward
 
-- `ChangeLogEntry` has no logical/vector clock. Hand-rolled sync (the owner's
-  choice this session, over a CRDT library -- see `CLAUDE.md` Layout) still
-  needs one for cross-device ordering; add it when M5 defines the merge
-  algorithm, not before.
-- Device identity is `Settings.Secure.ANDROID_ID`, a placeholder. M4 owns
-  real identity; swap it there.
-- `checklist`/`status_board`/`assignment_board`'s exact fields (`title_field`
-  + `done_field`; `group_by`/`assigned_to` + `columns`) were designed this
-  session -- nothing in the repo specified their shape before now. **Check
-  them against the external design doc** and adjust if they diverge; nothing
-  downstream depends on the current shape yet, so this is cheap to change
-  now and expensive later.
-- `bucketByEnum` puts a stored `null` on an *optional* group-by field in the
-  same unsafe lane as genuinely corrupt data. Currently unreachable --
-  `RecordFormScreen` always supplies a default -- but a real gap if a future
-  write path can leave an optional enum field unset.
+- `ChangeLogEntry` has no logical/vector clock yet. Add it when M5 defines
+  the merge, not before.
+- Device identity is `Settings.Secure.ANDROID_ID`, a placeholder until M4.
+- `bucketByEnum` puts a null on an *optional* group-by field in the unsafe
+  lane. Unreachable today, because the form always supplies a default.
+- **New:** `app_id` derives from the name, so two authors who type the same
+  description get the same `app_id`. M4's manifest must namespace apps by
+  author identity.
+- **New:** the interpreter only understands English. Kannada or Hindi input
+  falls back to plain records with a hashed `app_id`, which still works but
+  is generic.
+- **New:** `status_transition` follows the order the user listed statuses in.
+  A branching workflow (approved vs rejected) is not really linear, which is
+  M5's merge-semantics problem.
+- **New:** generated inventory quantities are last-write-wins, which is the
+  scarce-resource question below.
+- **New:** repair accepts any typed candidate, so a future LLM generator can
+  reuse it. Malformed model output would also need a parse-only step and the
+  report fed back to the model. Building that must keep invariants 1 and 11.
 
 ## Open questions for the owner
 
@@ -96,7 +89,8 @@ Per the working agreement this is architecture -- switch to **Opus**.
    device is available, M6 stalls regardless of code quality.
 2. **Scarce-resource semantics:** `status_transition` prevents a status
    retreating, but two volunteers claiming the same supply needs a stronger
-   rule than any per-field policy can express. Deferred to M5, flagged here so
-   it is not forgotten.
-3. **Does the new component shape match the design doc?** See Carry forward
-   above -- raising it here too so a `/clear` doesn't lose it.
+   rule than any per-field policy can express. Deferred to M5.
+3. **Do M2's component shapes and M3's template catalog match the design
+   doc?** Both were designed without it, because it is neither in the repo nor
+   anywhere on this machine. A copy in `docs/` would let future sessions check
+   directly instead of guessing.
